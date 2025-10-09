@@ -1,4 +1,4 @@
-### Async-aware documentation-first Finite State Machine."
+# Async-aware documentation-first Finite State Machine."
 
 Generates typed state machine code from UML diagram in PlantUML format.
 
