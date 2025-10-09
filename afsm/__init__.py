@@ -7,9 +7,5 @@ Funded by the European Union and UKRI. Views and opinions expressed are however 
 only and do not necessarily reflect those of the European Union, CINEA or UKRI. Neither the European 
 Union nor the granting authority can be held responsible for them.
 """
-import asyncio
+from .afsm import AFSM
 
-from atfsm.atfsm import main
-
-if __name__ == "__main__":
-    asyncio.run(main())

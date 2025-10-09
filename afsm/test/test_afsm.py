@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from atfsm import AFSM
+from afsm import AFSM
 
 import asyncio
 import pytest
