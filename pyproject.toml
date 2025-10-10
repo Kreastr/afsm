@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "afsm"
-version = "0.1.1"
+dynamic = ["version"]
 authors = [
   { name="Aleksei Romanenko", email="aleksei.romanenko@lut.fi" }
 ]
