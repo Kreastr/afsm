@@ -373,7 +373,7 @@ class AFSM(Generic[StatesEnumType, ConditionsEnumType, EventsEnumType, FSMContex
         shadow_name = actual_name + ".shadow"
         with open(shadow_name, "w") as f:
             f.write("from enum import Enum\n")
-            f.write(f"""from atfsm.state_base import StateBase
+            f.write(f"""from afsm.state_base import StateBase
 
 class {module_name}State(StateBase, str, Enum):
 """)
