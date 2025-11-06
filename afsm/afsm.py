@@ -312,7 +312,7 @@ def p_error(t):
 
 import ply.yacc as yacc
 
-@beartype
+
 class AFSM(Generic[StatesEnumType, ConditionsEnumType, EventsEnumType, FSMContextType]):
 
     def __init__(self, uml, se_factory: Callable[[str], StatesEnumType], context: FSMContextType, debug_ply=False, *args, **kwargs):
@@ -364,8 +364,8 @@ class AFSM(Generic[StatesEnumType, ConditionsEnumType, EventsEnumType, FSMContex
         logger.info(f"FSM initial state is { self.current_state }")
         assert self.current_state is not None, "FSM did not have any state marked as initial. Please add one using transition from [*] pseudo-state"
 
-
-    def write_enum_module(self, module_name, location=None):
+    @beartype
+    def write_enum_module(self, module_name : str, location : str | None = None):
         if location is None:
             actual_name = slugify(module_name, separator="_") + "_enums.py"
         else:
@@ -415,16 +415,18 @@ class {module_name}Event(str, Enum):
         else:
             unlink(shadow_name)
 
-    def on(self, event, callback):
+    @beartype
+    def on(self, event : EventsEnumType, callback : Callable):
         logger.debug(f"New subscription to {event}")
         self._events.on(event, callback)
 
-    def apply_context_to_all_states(self, context):
+    @beartype
+    def apply_context_to_all_states(self, context : FSMContextType):
         for k, st in self.sm_states.items():
             st.condition_context = context
 
-
-    def apply_to_all_conditions(self, condition_name : ConditionsEnumType, callback):
+    @beartype
+    def apply_to_all_conditions(self, condition_name : ConditionsEnumType, callback : Callable):
         for k, st in self.sm_states.items():
             for transition in st.transition_conditions:
                 if transition.name == condition_name.name:
@@ -447,15 +449,14 @@ class {module_name}Event(str, Enum):
                                                           f"was left uninitialized. Add one to .conditions.")
             #assert isinstance(transition.name, Type[CE])
             if st.conditions[ transition.name ](self.context, st.condition_context):
-                await self.transition_to_new_state(st, self.se_factory(transition.target_state) if transition.target_state is not None else None)
+                await self.transition_to_new_state(self.se_factory(transition.target_state) if transition.target_state is not None else None)
                 logger.info(f"FSM after conditional transition is { self.current_state }")
                 return
         if st.default_transition is not None:
-            await self.transition_to_new_state(st, self.se_factory(st.default_transition))
+            await self.transition_to_new_state(self.se_factory(st.default_transition))
             logger.info(f"FSM after default transition is { self.current_state }")
 
-
-
+    @beartype
     async def handle(self, event : EventsEnumType):
         if self.current_state is None:
             logger.warning(f"Attempted to handle an event before current_state is set.")
@@ -471,21 +472,24 @@ class {module_name}Event(str, Enum):
         st = self.sm_states[self.current_state]
         for transition in st.transition_events:
             if transition.name == event:
-                await self.transition_to_new_state(st, self.se_factory(transition.target_state))
+                await self.transition_to_new_state(self.se_factory(transition.target_state))
                 logger.info(f"FSM after event state is { self.current_state }")
                 break
 
-    async def handle_as_deferred(self, event):
+    @beartype
+    async def handle_as_deferred(self, event : EventsEnumType):
         logger.info(f"Got new event {event} during state transit. Deferring.")
         self.deferred_events.append(event)
 
+    @beartype
     async def handle_deferred_signals(self):
         while self.deferred_events:
             event = self.deferred_events.popleft()
             logger.info(f"Processing deferred event {event}")
             await self.handle(event)
 
-    async def transition_to_new_state(self, st, target_state : StatesEnumType | None):
+    @beartype
+    async def transition_to_new_state(self, target_state : StatesEnumType | None):
         if self.current_state is None:
             logger.error("Attempted transitioning a FSM without current_state")
             return
@@ -507,25 +511,27 @@ class {module_name}Event(str, Enum):
             return
 
         self_current_state : StatesEnumType = self.current_state
+
+        origin_state_info = self.sm_states[self_current_state]
         if target_state == self_current_state:
 
-            if st.on_loop is not None:
-                self._events.emit(st.on_loop, st.on_loop, self_current_state)
+            if origin_state_info.on_loop is not None:
+                self._events.emit(origin_state_info.on_loop, origin_state_info.on_loop, self_current_state)
             else:
                 self._events.emit(self_current_state.on_loop, self_current_state.on_loop, self_current_state)
         else:
 
-            if st.on_exit is not None:
-                self._events.emit(st.on_exit, st.on_exit, self.current_state)
+            if origin_state_info.on_exit is not None:
+                self._events.emit(origin_state_info.on_exit, origin_state_info.on_exit, self.current_state)
             else:
                 self._events.emit(self.current_state.on_exit, self.current_state.on_exit, self.current_state)
 
             self.current_state = target_state
             self_current_state : StatesEnumType = self.current_state
 
-            st = self.sm_states[self_current_state]
-            if st.on_enter is not None:
-                self._events.emit(st.on_enter, st.on_enter, self_current_state)
+            origin_state_info = self.sm_states[self_current_state]
+            if origin_state_info.on_enter is not None:
+                self._events.emit(origin_state_info.on_enter, origin_state_info.on_enter, self_current_state)
             else:
                 self._events.emit(self_current_state.on_enter, self_current_state.on_enter,
                                   self_current_state)
