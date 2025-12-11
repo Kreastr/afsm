@@ -315,11 +315,12 @@ import ply.yacc as yacc
 
 class AFSM(Generic[StatesEnumType, ConditionsEnumType, EventsEnumType, FSMContextType]):
 
-    def __init__(self, uml, se_factory: Callable[[str], StatesEnumType], context: FSMContextType, debug_ply=False, *args, **kwargs):
+    def __init__(self, uml, se_factory: Callable[[str], StatesEnumType], context: FSMContextType, fsm_name="", debug_ply=False, *args, **kwargs):
         super().__init__()
         self.uml = uml
         self._events = AsyncIOEventEmitter()
 
+        self.fsm_name = fsm_name
         self.terminated = False
         self.in_transit = False
         self.deferred_events = deque()
@@ -361,7 +362,7 @@ class AFSM(Generic[StatesEnumType, ConditionsEnumType, EventsEnumType, FSMContex
                 assert transition.name in st.conditions, (f"State machine condition tester {transition.name} for state {self.current_state} "
                                                               f"was left uninitialized. Add one to .conditions.")
 
-        logger.info(f"FSM initial state is { self.current_state }")
+        logger.info(f"FSM [{self.fsm_name}] initial state is { self.current_state }")
         assert self.current_state is not None, "FSM did not have any state marked as initial. Please add one using transition from [*] pseudo-state"
 
     @beartype
@@ -417,7 +418,7 @@ class {module_name}Event(str, Enum):
 
     @beartype
     def on(self, event : EventsEnumType, callback : Callable):
-        logger.debug(f"New subscription to {event}")
+        logger.debug(f"FSM [{self.fsm_name}] New subscription to {event}")
         self._events.on(event, callback)
 
     @beartype
@@ -435,7 +436,7 @@ class {module_name}Event(str, Enum):
 
     async def loop(self):
         if self.terminated:
-            logger.error("Attempted looping a finished FSM")
+            logger.error(f"FSM [{self.fsm_name}] Attempted looping a finished FSM")
             return
         if self.current_state is None:
             raise Exception("Trying to loop before current_state is set is not allowed.")
@@ -450,59 +451,59 @@ class {module_name}Event(str, Enum):
             #assert isinstance(transition.name, Type[CE])
             if st.conditions[ transition.name ](self.context, st.condition_context):
                 await self.transition_to_new_state(self.se_factory(transition.target_state) if transition.target_state is not None else None)
-                logger.info(f"FSM after conditional transition is { self.current_state }")
+                logger.info(f"FSM [{self.fsm_name}]  after conditional transition is { self.current_state }")
                 return
         if st.default_transition is not None:
             await self.transition_to_new_state(self.se_factory(st.default_transition))
-            logger.info(f"FSM after default transition is { self.current_state }")
+            logger.info(f"FSM [{self.fsm_name}]  after default transition is { self.current_state }")
 
     @beartype
     async def handle(self, event : EventsEnumType):
         if self.current_state is None:
-            logger.warning(f"Attempted to handle an event before current_state is set.")
+            logger.warning(f"FSM [{self.fsm_name}] Attempted to handle an event before current_state is set.")
             return
         if self.terminated:
-            logger.error("Attempted looping a finished FSM")
+            logger.error(f"FSM [{self.fsm_name}] Attempted looping a finished FSM")
             return
         if self.in_transit:
             await self.handle_as_deferred(event)
             return
-        logger.info(f"FSM on event {event}")
+        logger.info(f"FSM [{self.fsm_name}] on event {event}")
         self._events.emit(str(event), event, self.current_state)
         st = self.sm_states[self.current_state]
         for transition in st.transition_events:
             if transition.name == event:
                 await self.transition_to_new_state(self.se_factory(transition.target_state))
-                logger.info(f"FSM after event state is { self.current_state }")
+                logger.info(f"FSM [{self.fsm_name}]  after event state is { self.current_state }")
                 break
 
     @beartype
     async def handle_as_deferred(self, event : EventsEnumType):
-        logger.info(f"Got new event {event} during state transit. Deferring.")
+        logger.info(f"FSM [{self.fsm_name}] Got new event {event} during state transit. Deferring.")
         self.deferred_events.append(event)
 
     @beartype
     async def handle_deferred_signals(self):
         while self.deferred_events:
             event = self.deferred_events.popleft()
-            logger.info(f"Processing deferred event {event}")
+            logger.info(f"FSM [{self.fsm_name}] Processing deferred event {event}")
             await self.handle(event)
 
     @beartype
     async def transition_to_new_state(self, target_state : StatesEnumType | None):
         if self.current_state is None:
-            logger.error("Attempted transitioning a FSM without current_state")
+            logger.error(f"FSM [{self.fsm_name}] Attempted transitioning a FSM without current_state")
             return
 
         assert isinstance(target_state, StateBase) or target_state is None, f"{type(target_state)}"
 
         if self.terminated:
-            logger.error("Attempted transitioning a finished FSM")
+            logger.error(f"FSM [{self.fsm_name}] Attempted transitioning a finished FSM")
             return
 
         self.in_transit = True
         if target_state is None:
-            logger.warning("FSM reached its termination point")
+            logger.warning(f"FSM [{self.fsm_name}] FSM reached its termination point")
             self.terminated = True
             self.current_state = target_state
             self._events.emit("on_terminated", "on_terminated")
