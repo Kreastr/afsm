@@ -435,9 +435,14 @@ class {module_name}Event(str, Enum):
 
 
     async def loop(self):
+        if self.in_transit:
+            logger.warning(f"FSM [{self.fsm_name}] Attempted looping in transit")
+            return
+        
         if self.terminated:
             logger.error(f"FSM [{self.fsm_name}] Attempted looping a finished FSM")
             return
+        
         if self.current_state is None:
             raise Exception("Trying to loop before current_state is set is not allowed.")
 
@@ -502,41 +507,44 @@ class {module_name}Event(str, Enum):
             return
 
         self.in_transit = True
-        if target_state is None:
-            logger.warning(f"FSM [{self.fsm_name}] FSM reached its termination point")
-            self.terminated = True
-            self.current_state = target_state
-            self._events.emit("on_terminated", "on_terminated")
-            self.in_transit = False
-            await self.handle_deferred_signals()
-            return
+        start_state = self.current_state
+        logger.warning(f"FSM [{self.fsm_name}] start transit to {target_state} from {self.current_state}")
+        try:
+            if target_state is None:
+                logger.warning(f"FSM [{self.fsm_name}] FSM reached its termination point")
+                self.terminated = True
+                self.current_state = target_state
+                self._events.emit("on_terminated", "on_terminated")
+                return
 
-        self_current_state : StatesEnumType = self.current_state
-
-        origin_state_info = self.sm_states[self_current_state]
-        if target_state == self_current_state:
-
-            if origin_state_info.on_loop is not None:
-                self._events.emit(origin_state_info.on_loop, origin_state_info.on_loop, self_current_state)
-            else:
-                self._events.emit(self_current_state.on_loop, self_current_state.on_loop, self_current_state)
-        else:
-
-            if origin_state_info.on_exit is not None:
-                self._events.emit(origin_state_info.on_exit, origin_state_info.on_exit, self.current_state)
-            else:
-                self._events.emit(self.current_state.on_exit, self.current_state.on_exit, self.current_state)
-
-            self.current_state = target_state
             self_current_state : StatesEnumType = self.current_state
 
             origin_state_info = self.sm_states[self_current_state]
-            if origin_state_info.on_enter is not None:
-                self._events.emit(origin_state_info.on_enter, origin_state_info.on_enter, self_current_state)
+            if target_state == self_current_state:
+
+                if origin_state_info.on_loop is not None:
+                    self._events.emit(origin_state_info.on_loop, origin_state_info.on_loop, self_current_state)
+                else:
+                    self._events.emit(self_current_state.on_loop, self_current_state.on_loop, self_current_state)
             else:
-                self._events.emit(self_current_state.on_enter, self_current_state.on_enter,
-                                  self_current_state)
-            self._events.emit("on_state_changed", "on_state_changed")
-        self.in_transit = False
-        await self.handle_deferred_signals()
+
+                if origin_state_info.on_exit is not None:
+                    self._events.emit(origin_state_info.on_exit, origin_state_info.on_exit, self.current_state)
+                else:
+                    self._events.emit(self.current_state.on_exit, self.current_state.on_exit, self.current_state)
+
+                self.current_state = target_state
+                self_current_state : StatesEnumType = self.current_state
+
+                origin_state_info = self.sm_states[self_current_state]
+                if origin_state_info.on_enter is not None:
+                    self._events.emit(origin_state_info.on_enter, origin_state_info.on_enter, self_current_state)
+                else:
+                    self._events.emit(self_current_state.on_enter, self_current_state.on_enter,
+                                      self_current_state)
+                self._events.emit("on_state_changed", "on_state_changed")
+        finally:
+            self.in_transit = False
+            logger.warning(f"FSM [{self.fsm_name}] finished transit to {target_state} from {start_state}")
+            await self.handle_deferred_signals()
 
